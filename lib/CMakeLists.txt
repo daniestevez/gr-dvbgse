@@ -14,6 +14,7 @@ include(GrPlatform) #define LIB_SUFFIX
 list(APPEND dvbgse_sources
     bbheader_source_impl.cc
     bbheader_sink_impl.cc
+    frame_counter_impl.cc
 )
 
 set(dvbgse_sources "${dvbgse_sources}" PARENT_SCOPE)

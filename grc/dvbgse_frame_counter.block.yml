@@ -1,0 +1,41 @@
+id: dvbgse_frame_counter
+label: Frame Counter
+category: '[Core]/Digital Television/DVB-GSE'
+
+templates:
+  imports: import dvbgse
+  make: dvbgse.frame_counter(${type.size}*${vlen}, ${frame_size})
+
+parameters:
+- id: type
+  label: IO Type
+  dtype: enum
+  options: [complex, float, int, short, byte]
+  option_attributes:
+      size: [gr.sizeof_gr_complex, gr.sizeof_float, gr.sizeof_int,
+          gr.sizeof_short, gr.sizeof_char]
+  hide: part
+- id: frame_size
+  label: Frame size
+  dtype: int
+- id: vlen
+  label: Vector Length
+  dtype: int
+  default: '1'
+  hide: ${ 'part' if vlen == 1 else 'none' }
+
+inputs:
+- domain: stream
+  dtype: ${ type }
+  vlen: ${ vlen }
+  multiplicity: ${ ninputs }
+
+outputs:
+- domain: stream
+  dtype: ${ type }
+  vlen: ${ vlen }
+- label: frame_message
+  domain: message
+  optional: 1
+
+file_format: 1

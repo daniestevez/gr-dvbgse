@@ -33,19 +33,20 @@ namespace gr {
   namespace dvbgse {
 
     bbheader_source::sptr
-    bbheader_source::make(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len)
+    bbheader_source::make(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, int max_frames_in_flight)
     {
       return gnuradio::get_initial_sptr
-        (new bbheader_source_impl(standard, framesize, rate, rolloff, inband, fecblocks, tsrate, ping_reply, ipaddr_spoof, src_address, dst_address, padding_len));
+        (new bbheader_source_impl(standard, framesize, rate, rolloff, inband, fecblocks, tsrate, ping_reply, ipaddr_spoof, src_address, dst_address, padding_len, max_frames_in_flight));
     }
 
     /*
      * The private constructor
      */
-    bbheader_source_impl::bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len)
+    bbheader_source_impl::bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, int max_frames_in_flight)
       : gr::sync_block("bbheader_source",
               gr::io_signature::make(0, 0, 0),
-              gr::io_signature::make(1, 1, sizeof(unsigned char)))
+		       gr::io_signature::make(1, 1, sizeof(unsigned char))),
+	in_flight_counter(max_frames_in_flight)
     {
       char errbuf[PCAP_ERRBUF_SIZE];
       char dev[IFNAMSIZ];
@@ -365,6 +366,11 @@ namespace gr {
         handle_pcap_error("pcap_setfilter()", descr, err);
       }
 
+      const pmt::pmt_t frame_notification = pmt::string_to_symbol("frame_notification");
+      message_port_register_in(frame_notification);
+      set_msg_handler(frame_notification,
+		      [this](pmt::pmt_t msg) { this->notification_handler(msg); });
+
       set_output_multiple(kbch);
     }
 
@@ -381,6 +387,14 @@ namespace gr {
       }
     }
 
+    void
+    bbheader_source_impl::notification_handler(pmt::pmt_t msg)
+    {
+      if (in_flight_counter >= 0) {
+	++in_flight_counter;
+      }
+    }
+    
 #define CRC_POLY 0xAB
 // Reversed
 #define CRC_POLYR 0xD5
@@ -758,7 +772,10 @@ namespace gr {
       bool maxsize;
       bool gse = FALSE;
 
-      for (int i = 0; i < noutput_items; i += kbch) {
+      const int to_produce = in_flight_counter < 0 ?
+	noutput_items : std::min(noutput_items, static_cast<int>(kbch * in_flight_counter));
+
+      for (int i = 0; i < to_produce; i += kbch) {
         if (frame_size != FECFRAME_MEDIUM) {
           if (fec_block == 0 && inband_type_b == TRUE) {
             padding = 104;
@@ -1069,8 +1086,11 @@ namespace gr {
         }
       }
 
+      if (in_flight_counter > 0) {
+	in_flight_counter -= to_produce / kbch;
+      }
       // Tell runtime system how many output items we produced.
-      return noutput_items;
+      return to_produce;
     }
 
   } /* namespace dvbgse */

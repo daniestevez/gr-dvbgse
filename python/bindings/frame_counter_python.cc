@@ -13,8 +13,8 @@
 /* If manual edits are made, the following tags should be modified accordingly.    */
 /* BINDTOOL_GEN_AUTOMATIC(0)                                                       */
 /* BINDTOOL_USE_PYGCCXML(0)                                                        */
-/* BINDTOOL_HEADER_FILE(bbheader_source.h)                                        */
-/* BINDTOOL_HEADER_FILE_HASH(f6a88bd182ce8a6b4a4c359458494163)                     */
+/* BINDTOOL_HEADER_FILE(frame_counter.h)                                        */
+/* BINDTOOL_HEADER_FILE_HASH(ca0f33c9c8b4fdd016d0c95681ec19b2)                     */
 /***********************************************************************************/
 
 #include <pybind11/complex.h>
@@ -23,37 +23,26 @@
 
 namespace py = pybind11;
 
-#include <dvbgse/bbheader_source.h>
+#include <dvbgse/frame_counter.h>
 // pydoc.h is automatically generated in the build directory
-#include <bbheader_source_pydoc.h>
+#include <frame_counter_pydoc.h>
 
-void bind_bbheader_source(py::module& m)
+void bind_frame_counter(py::module& m)
 {
 
-    using bbheader_source = ::gr::dvbgse::bbheader_source;
+    using frame_counter = ::gr::dvbgse::frame_counter;
 
 
-    py::class_<bbheader_source,
+    py::class_<frame_counter,
                gr::sync_block,
                gr::block,
                gr::basic_block,
-               std::shared_ptr<bbheader_source>>(m, "bbheader_source", D(bbheader_source))
+               std::shared_ptr<frame_counter>>(m, "frame_counter", D(frame_counter))
 
-        .def(py::init(&bbheader_source::make),
-             py::arg("standard"),
-             py::arg("framesize"),
-             py::arg("rate"),
-             py::arg("rolloff"),
-             py::arg("inband"),
-             py::arg("fecblocks"),
-             py::arg("tsrate"),
-             py::arg("ping_reply"),
-             py::arg("ipaddr_spoof"),
-             py::arg("src_address"),
-             py::arg("dst_address"),
-             py::arg("padding_len"),
-             py::arg("max_frames_in_flight") = -1,
-             D(bbheader_source, make))
+        .def(py::init(&frame_counter::make),
+             py::arg("itemsize"),
+             py::arg("frame_size"),
+             D(frame_counter, make))
 
 
         ;

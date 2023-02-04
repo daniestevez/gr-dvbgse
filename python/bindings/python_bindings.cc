@@ -24,6 +24,7 @@ namespace py = pybind11;
     void bind_bbheader_source(py::module& m);
     void bind_bbheader_sink(py::module& m);
     void bind_dvb_config(py::module& m);
+    void bind_frame_counter(py::module& m);
 // ) END BINDING_FUNCTION_PROTOTYPES
 
 
@@ -55,5 +56,6 @@ PYBIND11_MODULE(dvbgse_python, m)
     bind_bbheader_source(m);
     bind_bbheader_sink(m);
     bind_dvb_config(m);
+    bind_frame_counter(m);
     // ) END BINDING_FUNCTION_CALLS
 }

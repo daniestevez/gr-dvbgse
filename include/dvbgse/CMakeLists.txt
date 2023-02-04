@@ -12,5 +12,6 @@
 install(FILES
     api.h
     bbheader_source.h
-    bbheader_sink.h DESTINATION include/dvbgse
+    bbheader_sink.h
+    frame_counter.h DESTINATION include/dvbgse
 )
