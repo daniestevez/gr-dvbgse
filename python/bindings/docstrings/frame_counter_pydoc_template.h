@@ -15,10 +15,10 @@
  */
 
 
-static const char* __doc_gr_dvbgse_bbheader_source = R"doc()doc";
+static const char* __doc_gr_dvbgse_frame_counter = R"doc()doc";
 
 
-static const char* __doc_gr_dvbgse_bbheader_source_bbheader_source = R"doc()doc";
+static const char* __doc_gr_dvbgse_frame_counter_frame_counter = R"doc()doc";
 
 
-static const char* __doc_gr_dvbgse_bbheader_source_make = R"doc()doc";
+static const char* __doc_gr_dvbgse_frame_counter_make = R"doc()doc";

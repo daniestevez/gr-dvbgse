@@ -8,5 +8,6 @@
 
 install(FILES
     dvbgse_bbheader_source.block.yml
-    dvbgse_bbheader_sink.block.yml DESTINATION share/gnuradio/grc/blocks
+    dvbgse_bbheader_sink.block.yml
+    dvbgse_frame_counter.block.yml DESTINATION share/gnuradio/grc/blocks
 )

@@ -160,7 +160,15 @@ parameters:
     option_labels: ['0 byte', '1 byte']
     option_attributes:
         val: [dvbgse.PADDING_PACKET_LENGTH_0, dvbgse.PADDING_PACKET_LENGTH_1]
+-   id: max_frames_in_flight
+    label: Maximum frames in flight
+    dtype: int
+    default: -1
 
+inputs:
+-   label: frame_notification
+    domain: message
+    optional: 1
 outputs:
 -   domain: stream
     dtype: byte
@@ -174,6 +182,6 @@ templates:
         ${rate3.val}, \n% elif str(framesize2) == 'FECFRAME_MEDIUM':\n${rate4.val},\
         \ \n% else:\n${rate5.val}, \n% endif\n% endif\n${rolloff.val}, ${inband.val},\
         \ ${fecblocks}, ${tsrate}, ${ping_reply.val}, ${ipaddr_spoof.val},\
-        \ ${src_address}, ${dst_address}, ${gse_padding.val})"
+        \ ${src_address}, ${dst_address}, ${gse_padding.val}, ${max_frames_in_flight})"
 
 file_format: 1

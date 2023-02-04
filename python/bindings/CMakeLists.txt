@@ -31,7 +31,8 @@ include(GrPybind)
 list(APPEND dvbgse_python_files
     bbheader_source_python.cc
     bbheader_sink_python.cc
-    dvb_config_python.cc python_bindings.cc)
+    dvb_config_python.cc
+    frame_counter_python.cc python_bindings.cc)
 
 GR_PYBIND_MAKE_OOT(dvbgse 
    ../..
