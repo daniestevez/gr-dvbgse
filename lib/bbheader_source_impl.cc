@@ -775,7 +775,7 @@ namespace gr {
             padding = 4;
           }
         }
-        ether_addr_len = ETHER_ADDR_LEN;
+        ether_addr_len = 0;
         add_bbheader(&out[offset], count, padding, TRUE);
         first_offset = offset;
         offset = offset + 80;
@@ -791,12 +791,7 @@ namespace gr {
                 gse = TRUE;
                 out[offset++] = 1;    /* Start_Indicator = 1 */
                 out[offset++] = 1;    /* End_Indicator = 1 */
-                if (ether_addr_len) {
-                  bits = 0x0;           /* Label_Type_Indicator = 6 byte */
-                }
-                else {
-                  bits = 0x3;           /* Label_Type_Indicator = re-use */
-                }
+		bits = 0x2; /* Label_Type_Indicator = broadcast */
                 for (int n = 1; n >= 0; n--) {
                   out[offset++] = bits & (1 << n) ? 1 : 0;
                 }
@@ -821,15 +816,7 @@ namespace gr {
                     out[offset++] = bits & (1 << n) ? 1 : 0;
                   }
                 }
-                /* 6_Byte_Label */
-                ptr = eptr->ether_dhost;
-                for (unsigned int j = 0; j < ether_addr_len; j++) {
-                  bits = *ptr++;
-                  for (int n = 7; n >= 0; n--) {
-                    out[offset++] = bits & (1 << n) ? 1 : 0;
-                  }
-                }
-                ether_addr_len = ETHER_ADDR_LEN;    /* disable label re-use for now */
+                ether_addr_len = 0;
                 /* GSE_data_byte */
                 ptr = (unsigned char *)(packet + sizeof(struct ether_header));
                 for (unsigned int j = 0; j < hdr.len - sizeof(struct ether_header); j++) {
@@ -849,12 +836,7 @@ namespace gr {
                   gse = TRUE;
                   out[offset++] = 1;    /* Start_Indicator = 1 */
                   out[offset++] = 0;    /* End_Indicator = 0 */
-                  if (ether_addr_len) {
-                    bits = 0x0;           /* Label_Type_Indicator = 6 byte */
-                  }
-                  else {
-                    bits = 0x3;           /* Label_Type_Indicator = re-use */
-                  }
+		  bits = 0x2; /* Label_Type_Indicator = broadcast */
                   for (int n = 1; n >= 0; n--) {
                     out[offset++] = bits & (1 << n) ? 1 : 0;
                   }
@@ -898,16 +880,7 @@ namespace gr {
                       out[offset++] = bits & (1 << n) ? 1 : 0;
                     }
                   }
-                  /* 6_Byte_Label */
-                  ptr = eptr->ether_dhost;
-                  crc32_partial = crc32_calc(ptr, ether_addr_len, crc32_partial);
-                  for (unsigned int j = 0; j < ether_addr_len; j++) {
-                    bits = *ptr++;
-                    for (int n = 7; n >= 0; n--) {
-                      out[offset++] = bits & (1 << n) ? 1 : 0;
-                    }
-                  }
-                  ether_addr_len = ETHER_ADDR_LEN;    /* disable label re-use for now */
+                  ether_addr_len = 0;
                   /* GSE_data_byte */
                   ptr = (unsigned char *)(packet + sizeof(struct ether_header));
                   if (maxsize == TRUE) {
