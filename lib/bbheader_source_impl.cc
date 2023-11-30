@@ -24,6 +24,8 @@
 
 #include <gnuradio/io_signature.h>
 #include "bbheader_source_impl.h"
+#include <cstring>
+#include <linux/if_tun.h>
 
 #define DEFAULT_IF "tap0"
 #define FILTER "ether src "
@@ -33,19 +35,20 @@ namespace gr {
   namespace dvbgse {
 
     bbheader_source::sptr
-    bbheader_source::make(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, int max_frames_in_flight)
+    bbheader_source::make(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, int max_frames_in_flight)
     {
       return gnuradio::get_initial_sptr
-        (new bbheader_source_impl(standard, framesize, rate, rolloff, inband, fecblocks, tsrate, ping_reply, ipaddr_spoof, src_address, dst_address, padding_len, max_frames_in_flight));
+        (new bbheader_source_impl(standard, framesize, rate, rolloff, inband, fecblocks, tsrate, ping_reply, ipaddr_spoof, src_address, dst_address, padding_len, tuntap_mode, tuntap_name, max_frames_in_flight));
     }
 
     /*
      * The private constructor
      */
-    bbheader_source_impl::bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, int max_frames_in_flight)
+    bbheader_source_impl::bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, int max_frames_in_flight)
       : gr::sync_block("bbheader_source",
               gr::io_signature::make(0, 0, 0),
 		       gr::io_signature::make(1, 1, sizeof(unsigned char))),
+        d_tuntap_mode(tuntap_mode),
 	in_flight_counter(max_frames_in_flight)
     {
       char errbuf[PCAP_ERRBUF_SIZE];
@@ -311,59 +314,89 @@ namespace gr {
         throw std::runtime_error("Error calling open()\n");
       }
       memset(&ifr, 0, sizeof(ifr));
-      ifr.ifr_flags = IFF_TAP;
-      strncpy(ifr.ifr_name, DEFAULT_IF, IFNAMSIZ);
+      switch (tuntap_mode) {
+        case TUNTAP_MODE_TAP_PCAP:
+          ifr.ifr_flags = IFF_TAP;
+          break;
+        case TUNTAP_MODE_TUN:
+          ifr.ifr_flags = IFF_TUN;
+          break;
+        default:
+          throw std::runtime_error("Invalid tuntap mode");
+      }
+      if (tuntap_name == nullptr || tuntap_name[0] == '\0') {
+        tuntap_name = DEFAULT_IF;
+      }
+      strncpy(ifr.ifr_name, tuntap_name, IFNAMSIZ-1);
 
       if ((err = ioctl(fd, TUNSETIFF, (void *) &ifr)) == -1) {
         close(fd);
         throw std::runtime_error("Error calling ioctl()\n");
       }
 
-      fdmac = socket(AF_INET, SOCK_DGRAM, 0);
-      ifrmac.ifr_addr.sa_family = AF_INET;
-      strncpy(ifrmac.ifr_name , DEFAULT_IF , IFNAMSIZ-1);
-      ioctl(fdmac, SIOCGIFHWADDR, &ifrmac);
-      close(fdmac);
+      if (tuntap_mode == TUNTAP_MODE_TAP_PCAP) {
+        fdmac = socket(AF_INET, SOCK_DGRAM, 0);
+        ifrmac.ifr_addr.sa_family = AF_INET;
+        strncpy(ifrmac.ifr_name , tuntap_name, IFNAMSIZ-1);
+        ioctl(fdmac, SIOCGIFHWADDR, &ifrmac);
+        close(fdmac);
+        
+        mac = (unsigned char *)ifrmac.ifr_hwaddr.sa_data;
+        snprintf(mac_address, sizeof(mac_address), "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x" , mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        
+        strcpy(dev, DEFAULT_IF);
+        descr = pcap_create(dev, errbuf);
+        if (descr == NULL) {
+          std::stringstream s;
+          s << "Error calling pcap_create(): " << errbuf << std::endl;
+          throw std::runtime_error(s.str());
+        }
+        err = pcap_set_promisc(descr, 0);
+        if (err != 0) {
+          handle_pcap_error("pcap_set_promisc()", descr, err);
+        }
+        err = pcap_set_timeout(descr, -1);
+        if (err != 0) {
+          handle_pcap_error("pcap_set_timeout()", descr, err);
+        }
+        err = pcap_set_snaplen(descr, 65536);
+        if (err != 0) {
+          handle_pcap_error("pcap_set_snaplen()", descr, err);
+        }
+        err = pcap_set_buffer_size(descr, 1024 * 1024 * 16);
+        if (err != 0) {
+          handle_pcap_error("pcap_set_buffer_size()", descr, err);
+        }
+        err = pcap_activate(descr);
+        if (err != 0) {
+          handle_pcap_error("pcap_activate()", descr, err);
+        }
+        strcpy(filter, FILTER);
+        strcat(filter, mac_address);
+        err = pcap_compile(descr, &fp, filter, 0, netp);
+        if (err == -1) {
+          handle_pcap_error("pcap_compile()", descr, err);
+        }
+        err = pcap_setfilter(descr, &fp);
+        if (err == -1) {
+          handle_pcap_error("pcap_setfilter()", descr, err);
+        }
+      }
 
-      mac = (unsigned char *)ifrmac.ifr_hwaddr.sa_data;
-      snprintf(mac_address, sizeof(mac_address), "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x" , mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-      strcpy(dev, DEFAULT_IF);
-      descr = pcap_create(dev, errbuf);
-      if (descr == NULL) {
-        std::stringstream s;
-        s << "Error calling pcap_create(): " << errbuf << std::endl;
-        throw std::runtime_error(s.str());
-      }
-      err = pcap_set_promisc(descr, 0);
-      if (err != 0) {
-        handle_pcap_error("pcap_set_promisc()", descr, err);
-      }
-      err = pcap_set_timeout(descr, -1);
-      if (err != 0) {
-        handle_pcap_error("pcap_set_timeout()", descr, err);
-      }
-      err = pcap_set_snaplen(descr, 65536);
-      if (err != 0) {
-        handle_pcap_error("pcap_set_snaplen()", descr, err);
-      }
-      err = pcap_set_buffer_size(descr, 1024 * 1024 * 16);
-      if (err != 0) {
-        handle_pcap_error("pcap_set_buffer_size()", descr, err);
-      }
-      err = pcap_activate(descr);
-      if (err != 0) {
-        handle_pcap_error("pcap_activate()", descr, err);
-      }
-      strcpy(filter, FILTER);
-      strcat(filter, mac_address);
-      err = pcap_compile(descr, &fp, filter, 0, netp);
-      if (err == -1) {
-        handle_pcap_error("pcap_compile()", descr, err);
-      }
-      err = pcap_setfilter(descr, &fp);
-      if (err == -1) {
-        handle_pcap_error("pcap_setfilter()", descr, err);
+      if (tuntap_mode == TUNTAP_MODE_TUN) {
+        // Set O_NONBLOCK on the TUN. This is required because work() cannot
+        // wait for packets to arrive to the TUN, so the read() must be
+        // non-blocking.
+        int val = fcntl(fd, F_GETFL, 0);
+        if (val < 0) {
+          throw std::runtime_error("fcntl failed");
+        }
+        if (fcntl(fd, F_SETFL, val | O_NONBLOCK) < 0) {
+          throw std::runtime_error("fcntl failed");
+        }
+        // Use 9000 bytes as maximum MTU for the buffer used to read IP packets
+        // from the TUN.
+        packet_buffer.resize(9000 + sizeof(struct tun_pi));
       }
 
       const pmt::pmt_t frame_notification = pmt::string_to_symbol("frame_notification");
@@ -394,7 +427,7 @@ namespace gr {
 	++in_flight_counter;
       }
     }
-    
+
 #define CRC_POLY 0xAB
 // Reversed
 #define CRC_POLYR 0xD5
@@ -799,11 +832,36 @@ namespace gr {
         while (1) {
           if (packet_fragmented == FALSE) {
             if (last_packet_valid == FALSE) {
-              packet = pcap_next(descr, &hdr);
+              switch (d_tuntap_mode) {
+                case TUNTAP_MODE_TAP_PCAP:
+                  packet = pcap_next(descr, &hdr);
+                  if (packet != nullptr) {
+                    ip_packet_len = hdr.len - sizeof(struct ether_header);
+                  } else {
+                    ip_packet_len = 0;
+                  }
+                  break;
+                case TUNTAP_MODE_TUN:
+                  const int nread = read(fd, packet_buffer.data(), packet_buffer.size());
+                  if (nread < 0 && errno == EAGAIN) {
+                    // this condition is normal, because the fd is O_NONBLOCK
+                    ip_packet_len = 0;
+                    break;
+                  }
+                  if (nread < 0) {
+                    throw std::runtime_error(std::string("could not read from TUN device: ")
+                                             + std::strerror(errno));
+                  }
+                  if (nread <= sizeof(struct tun_pi)) {
+                    throw std::runtime_error("data read from TUN device is too short");
+                  }
+                  ip_packet_len = nread - sizeof(struct tun_pi);
+                  break;
+              }
             }
-            if (packet != NULL) {
+            if (ip_packet_len != 0) {
               last_packet_valid = FALSE;
-              if (((hdr.len - sizeof(struct ether_header) + HEADER_SIZE + ETHER_TYPE_LEN + ether_addr_len) <= ((kbch - (offset - first_offset) - padding) / 8)) && ((hdr.len - sizeof(struct ether_header) + ETHER_TYPE_LEN + ether_addr_len) < 4096)) {
+              if (((ip_packet_len + HEADER_SIZE + ETHER_TYPE_LEN + ether_addr_len) <= ((kbch - (offset - first_offset) - padding) / 8)) && ((ip_packet_len + ETHER_TYPE_LEN + ether_addr_len) < 4096)) {
                 /* PDU start, no fragmentation */
                 gse = TRUE;
                 out[offset++] = 1;    /* Start_Indicator = 1 */
@@ -812,7 +870,7 @@ namespace gr {
                 for (int n = 1; n >= 0; n--) {
                   out[offset++] = bits & (1 << n) ? 1 : 0;
                 }
-                bits = hdr.len - sizeof(struct ether_header) + ETHER_TYPE_LEN + ether_addr_len;    /* GSE_Length */
+                bits = ip_packet_len + ETHER_TYPE_LEN + ether_addr_len;    /* GSE_Length */
                 for (int n = 11; n >= 0; n--) {
                   out[offset++] = bits & (1 << n) ? 1 : 0;
                 }
@@ -824,9 +882,18 @@ namespace gr {
                   ipaddr_spoof();
                 }
 
-                eptr = (struct ether_header *)packet;
                 /* Protocol_Type */
-                ptr = (unsigned char *)&eptr->ether_type;
+                unsigned char ethertype[ETHER_TYPE_LEN];
+                switch (d_tuntap_mode) {
+                  case TUNTAP_MODE_TAP_PCAP:
+                    eptr = (struct ether_header *)packet;
+                    ptr = (unsigned char *)&eptr->ether_type;
+                    break;
+                  case TUNTAP_MODE_TUN:
+                    // The ethertype is in the tun packet info
+                    ptr = (unsigned char *) &((struct tun_pi*) packet_buffer.data())->proto;
+                    break;
+                }
                 for (int j = 0; j < ETHER_TYPE_LEN; j++) {
                   bits = *ptr++;
                   for (int n = 7; n >= 0; n--) {
@@ -835,8 +902,14 @@ namespace gr {
                 }
                 ether_addr_len = 0;
                 /* GSE_data_byte */
-                ptr = (unsigned char *)(packet + sizeof(struct ether_header));
-                for (unsigned int j = 0; j < hdr.len - sizeof(struct ether_header); j++) {
+                switch (d_tuntap_mode) {
+                  case TUNTAP_MODE_TAP_PCAP:
+                    ptr = (unsigned char *)(packet + sizeof(struct ether_header));
+                    break;
+                  case TUNTAP_MODE_TUN:
+                    ptr = packet_buffer.data() + sizeof(struct tun_pi);
+                }
+                for (unsigned int j = 0; j < ip_packet_len; j++) {
                   bits = *ptr++;
                   for (int n = 7; n >= 0; n--) {
                     out[offset++] = bits & (1 << n) ? 1 : 0;
@@ -872,7 +945,7 @@ namespace gr {
                   for (int n = 7; n >= 0; n--) {
                     out[offset++] = bits & (1 << n) ? 1 : 0;
                   }
-                  bits = hdr.len - sizeof(struct ether_header) + ETHER_TYPE_LEN + ether_addr_len;    /* Total_Length */
+                  bits = ip_packet_len + ETHER_TYPE_LEN + ether_addr_len;    /* Total_Length */
                   total_length[0] = (bits >> 8) & 0xff;
                   total_length[1] = bits & 0xff;
                   crc32_partial = crc32_calc(&total_length[0], 2, 0xffffffff);
@@ -887,9 +960,18 @@ namespace gr {
                     ipaddr_spoof();
                   }
 
-                  eptr = (struct ether_header *)packet;
                   /* Protocol_Type */
-                  ptr = (unsigned char *)&eptr->ether_type;
+                  unsigned char ethertype[ETHER_TYPE_LEN];
+                  switch (d_tuntap_mode) {
+                  case TUNTAP_MODE_TAP_PCAP:
+                    eptr = (struct ether_header *)packet;
+                    ptr = (unsigned char *)&eptr->ether_type;
+                    break;
+                  case TUNTAP_MODE_TUN:
+                    // The ethertype is in the tun packet info
+                    ptr = (unsigned char *) &((struct tun_pi*) packet_buffer.data())->proto;
+                    break;
+                  }
                   crc32_partial = crc32_calc(ptr, ETHER_TYPE_LEN, crc32_partial);
                   for (int j = 0; j < ETHER_TYPE_LEN; j++) {
                     bits = *ptr++;
@@ -899,7 +981,13 @@ namespace gr {
                   }
                   ether_addr_len = 0;
                   /* GSE_data_byte */
-                  ptr = (unsigned char *)(packet + sizeof(struct ether_header));
+                  switch (d_tuntap_mode) {
+                  case TUNTAP_MODE_TAP_PCAP:
+                    ptr = (unsigned char *)(packet + sizeof(struct ether_header));
+                    break;
+                  case TUNTAP_MODE_TUN:
+                    ptr = packet_buffer.data() + sizeof(struct tun_pi);
+                  }
                   if (maxsize == TRUE) {
                     length = MAX_GSE_LENGTH - 1 - FRAG_ID_SIZE - TOTAL_LENGTH_SIZE - ETHER_TYPE_LEN - ether_addr_len;
                   }
@@ -907,7 +995,7 @@ namespace gr {
                     length = (kbch - (offset - first_offset) - padding) / 8;
                   }
                   crc32_partial = crc32_calc(ptr, length, crc32_partial);
-                  packet_length = hdr.len - sizeof(struct ether_header) - length;
+                  packet_length = ip_packet_len - length;
                   for (int j = 0; j < length; j++) {
                     bits = *ptr++;
                     for (int n = 7; n >= 0; n--) {

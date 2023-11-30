@@ -51,11 +51,15 @@ PYBIND11_MODULE(dvbgse_python, m)
     // The following comment block is used for
     // gr_modtool to insert binding function calls
     // Please do not delete
+    //
+    // Note: dvb_config needs to be bound before bbheader_source because types
+    // defined in dvb_config are used as default parameters in bbheader_source.
+    //
     /**************************************/
     // BINDING_FUNCTION_CALLS(
+    bind_dvb_config(m);
     bind_bbheader_source(m);
     bind_bbheader_sink(m);
-    bind_dvb_config(m);
     bind_frame_counter(m);
     // ) END BINDING_FUNCTION_CALLS
 }

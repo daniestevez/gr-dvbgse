@@ -160,6 +160,16 @@ parameters:
     option_labels: ['0 byte', '1 byte']
     option_attributes:
         val: [dvbgse.PADDING_PACKET_LENGTH_0, dvbgse.PADDING_PACKET_LENGTH_1]
+-   id: tuntap_mode
+    label: TUNTAP mode
+    dtype: enum
+    options: [TUNTAP_MODE_TAP_PCAP, TUNTAP_MODE_TUN]
+    option_labels: ['TAP (PCAP)', 'TUN']
+    option_attributes:
+        val: [dvbgse.TUNTAP_MODE_TAP_PCAP, dvbgse.TUNTAP_MODE_TUN]
+-   id: tuntap_name
+    label: TUNTAP device name
+    dtype: string
 -   id: max_frames_in_flight
     label: Maximum frames in flight
     dtype: int
@@ -182,6 +192,7 @@ templates:
         ${rate3.val}, \n% elif str(framesize2) == 'FECFRAME_MEDIUM':\n${rate4.val},\
         \ \n% else:\n${rate5.val}, \n% endif\n% endif\n${rolloff.val}, ${inband.val},\
         \ ${fecblocks}, ${tsrate}, ${ping_reply.val}, ${ipaddr_spoof.val},\
-        \ ${src_address}, ${dst_address}, ${gse_padding.val}, ${max_frames_in_flight})"
+        \ ${src_address}, ${dst_address}, ${gse_padding.val},\
+        \ ${tuntap_mode.val}, ${tuntap_name}, ${max_frames_in_flight})"
 
 file_format: 1

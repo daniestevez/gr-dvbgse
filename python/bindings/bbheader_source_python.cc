@@ -14,7 +14,7 @@
 /* BINDTOOL_GEN_AUTOMATIC(0)                                                       */
 /* BINDTOOL_USE_PYGCCXML(0)                                                        */
 /* BINDTOOL_HEADER_FILE(bbheader_source.h)                                        */
-/* BINDTOOL_HEADER_FILE_HASH(f6a88bd182ce8a6b4a4c359458494163)                     */
+/* BINDTOOL_HEADER_FILE_HASH(16469793ebcb341d8b05d5afa2c67eca)                     */
 /***********************************************************************************/
 
 #include <pybind11/complex.h>
@@ -52,6 +52,8 @@ void bind_bbheader_source(py::module& m)
              py::arg("src_address"),
              py::arg("dst_address"),
              py::arg("padding_len"),
+             py::arg("tuntap_mode") = ::gr::dvbgse::tuntap_mode_t::TUNTAP_MODE_TAP_PCAP,
+             py::arg("tuntap_name") = nullptr,
              py::arg("max_frames_in_flight") = -1,
              D(bbheader_source, make))
 

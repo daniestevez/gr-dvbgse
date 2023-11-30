@@ -145,6 +145,10 @@ namespace gr {
       PADDING_PACKET_LENGTH_1,
     };
 
+    enum tuntap_mode_t {
+      TUNTAP_MODE_TAP_PCAP = 0,
+      TUNTAP_MODE_TUN,
+    };
   } // namespace dvbgse
 } // namespace gr
 
@@ -156,6 +160,7 @@ typedef gr::dvbgse::dvbt2_inband_t dvbt2_inband_t;
 typedef gr::dvbgse::test_ping_reply_t test_ping_reply_t;
 typedef gr::dvbgse::test_ipaddr_spoof_t test_ipaddr_spoof_t;
 typedef gr::dvbgse::gse_padding_packet_t gse_padding_packet_t;
+typedef gr::dvbgse::tuntap_mode_t tuntap_mode_t;
 
 #endif /* INCLUDED_DVBGSE_CONFIG_H */
 

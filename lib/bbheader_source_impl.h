@@ -30,6 +30,7 @@
 #include <net/if.h>
 #include <linux/if_tun.h>
 #include <fcntl.h>
+#include <vector>
 
 #define START_INDICATOR_SIZE 1
 #define END_INDICATOR_SIZE 1
@@ -70,6 +71,7 @@ namespace gr {
       unsigned char crc;
       unsigned int frame_size;
       unsigned int padding_length;
+      tuntap_mode_t d_tuntap_mode;
       int in_flight_counter;
       int inband_type_b;
       int fec_blocks;
@@ -91,6 +93,8 @@ namespace gr {
       int packet_length;
       bool last_packet_valid;
       const unsigned char *packet;
+      std::vector<unsigned char> packet_buffer;
+      int ip_packet_len;
       unsigned char frag_id;
       int crc32_partial;
       unsigned char src_addr[sizeof(in_addr)];
@@ -108,7 +112,7 @@ namespace gr {
       void handle_pcap_error(const std::string, pcap_t *, int);
 
      public:
-      bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, int max_frames_in_flight);
+      bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, int max_frames_in_flight);
       ~bbheader_source_impl();
 
       void notification_handler(pmt::pmt_t msg);
