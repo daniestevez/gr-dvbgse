@@ -170,6 +170,13 @@ parameters:
 -   id: tuntap_name
     label: TUNTAP device name
     dtype: string
+-   id: label_type
+    label: Label type
+    dtype: enum
+    options: [LABEL_TYPE_6BYTE, LABEL_TYPE_BROADCAST]
+    option_labels: ['6-byte', 'Broadcast']
+    option_attributes:
+        val: [dvbgse.LABEL_TYPE_6BYTE, dvbgse.LABEL_TYPE_BROADCAST]
 -   id: max_frames_in_flight
     label: Maximum frames in flight
     dtype: int
@@ -193,6 +200,6 @@ templates:
         \ \n% else:\n${rate5.val}, \n% endif\n% endif\n${rolloff.val}, ${inband.val},\
         \ ${fecblocks}, ${tsrate}, ${ping_reply.val}, ${ipaddr_spoof.val},\
         \ ${src_address}, ${dst_address}, ${gse_padding.val},\
-        \ ${tuntap_mode.val}, ${tuntap_name}, ${max_frames_in_flight})"
+        \ ${tuntap_mode.val}, ${tuntap_name}, ${label_type.val}, ${max_frames_in_flight})"
 
 file_format: 1

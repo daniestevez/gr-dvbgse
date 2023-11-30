@@ -35,21 +35,22 @@ namespace gr {
   namespace dvbgse {
 
     bbheader_source::sptr
-    bbheader_source::make(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, int max_frames_in_flight)
+    bbheader_source::make(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, label_type_t label_type, int max_frames_in_flight)
     {
       return gnuradio::get_initial_sptr
-        (new bbheader_source_impl(standard, framesize, rate, rolloff, inband, fecblocks, tsrate, ping_reply, ipaddr_spoof, src_address, dst_address, padding_len, tuntap_mode, tuntap_name, max_frames_in_flight));
+        (new bbheader_source_impl(standard, framesize, rate, rolloff, inband, fecblocks, tsrate, ping_reply, ipaddr_spoof, src_address, dst_address, padding_len, tuntap_mode, tuntap_name, label_type, max_frames_in_flight));
     }
 
     /*
      * The private constructor
      */
-    bbheader_source_impl::bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, int max_frames_in_flight)
+    bbheader_source_impl::bbheader_source_impl(dvb_standard_t standard, dvb_framesize_t framesize, dvb_code_rate_t rate, dvbs2_rolloff_factor_t rolloff, dvbt2_inband_t inband, int fecblocks, int tsrate, test_ping_reply_t ping_reply, test_ipaddr_spoof_t ipaddr_spoof, char *src_address, char *dst_address, gse_padding_packet_t padding_len, tuntap_mode_t tuntap_mode, const char *tuntap_name, label_type_t label_type, int max_frames_in_flight)
       : gr::sync_block("bbheader_source",
               gr::io_signature::make(0, 0, 0),
 		       gr::io_signature::make(1, 1, sizeof(unsigned char))),
         d_tuntap_mode(tuntap_mode),
-	in_flight_counter(max_frames_in_flight)
+	in_flight_counter(max_frames_in_flight),
+        d_label_type(label_type)
     {
       char errbuf[PCAP_ERRBUF_SIZE];
       char dev[IFNAMSIZ];
@@ -62,6 +63,10 @@ namespace gr {
       struct ifreq ifrmac;
       unsigned char *mac;
       char mac_address[18];
+
+      if (tuntap_mode == TUNTAP_MODE_TUN && label_type != LABEL_TYPE_BROADCAST) {
+        throw std::runtime_error("TUN mode can only be used with broadcast labels");
+      }
 
       count = 0;
       crc = 0x0;
@@ -825,7 +830,16 @@ namespace gr {
             padding = 4;
           }
         }
-        ether_addr_len = 0;
+        switch (d_label_type) {
+          case LABEL_TYPE_BROADCAST:
+            ether_addr_len = 0;
+            break;
+          case LABEL_TYPE_6BYTE:
+            ether_addr_len = ETHER_ADDR_LEN;
+            break;
+          default:
+            throw std::runtime_error("invalid label type");
+        }
         add_bbheader(&out[offset], count, padding, TRUE);
         first_offset = offset;
         offset = offset + 80;
@@ -866,7 +880,19 @@ namespace gr {
                 gse = TRUE;
                 out[offset++] = 1;    /* Start_Indicator = 1 */
                 out[offset++] = 1;    /* End_Indicator = 1 */
-		bits = 0x2; /* Label_Type_Indicator = broadcast */
+                switch (d_label_type) {
+                  case LABEL_TYPE_BROADCAST:
+                    bits = 0x2; /* Label_Type_Indicator = broadcast */
+                    break;
+                  case LABEL_TYPE_6BYTE:
+                    if (ether_addr_len) {
+                      bits = 0x0;           /* Label_Type_Indicator = 6 byte */
+                    }
+                    else {
+                      bits = 0x3;           /* Label_Type_Indicator = re-use */
+                    }
+                    break;
+                }
                 for (int n = 1; n >= 0; n--) {
                   out[offset++] = bits & (1 << n) ? 1 : 0;
                 }
@@ -900,7 +926,21 @@ namespace gr {
                     out[offset++] = bits & (1 << n) ? 1 : 0;
                   }
                 }
-                ether_addr_len = 0;
+                switch (d_label_type) {
+                  case LABEL_TYPE_BROADCAST:
+                    break; // nothing to do in this case
+                  case LABEL_TYPE_6BYTE:
+                    /* 6_Byte_Label */
+                    ptr = eptr->ether_dhost;
+                    for (unsigned int j = 0; j < ether_addr_len; j++) {
+                      bits = *ptr++;
+                      for (int n = 7; n >= 0; n--) {
+                        out[offset++] = bits & (1 << n) ? 1 : 0;
+                      }
+                    }
+                    ether_addr_len = ETHER_ADDR_LEN;    /* disable label re-use for now */
+                    break;
+                }
                 /* GSE_data_byte */
                 switch (d_tuntap_mode) {
                   case TUNTAP_MODE_TAP_PCAP:
@@ -926,7 +966,19 @@ namespace gr {
                   gse = TRUE;
                   out[offset++] = 1;    /* Start_Indicator = 1 */
                   out[offset++] = 0;    /* End_Indicator = 0 */
-		  bits = 0x2; /* Label_Type_Indicator = broadcast */
+		  switch (d_label_type) {
+                    case LABEL_TYPE_BROADCAST:
+                      bits = 0x2; /* Label_Type_Indicator = broadcast */
+                      break;
+                    case LABEL_TYPE_6BYTE:
+                      if (ether_addr_len) {
+                        bits = 0x0;           /* Label_Type_Indicator = 6 byte */
+                      }
+                      else {
+                        bits = 0x3;           /* Label_Type_Indicator = re-use */
+                      }
+                      break;
+                  }
                   for (int n = 1; n >= 0; n--) {
                     out[offset++] = bits & (1 << n) ? 1 : 0;
                   }
@@ -979,7 +1031,22 @@ namespace gr {
                       out[offset++] = bits & (1 << n) ? 1 : 0;
                     }
                   }
-                  ether_addr_len = 0;
+                  switch (d_label_type) {
+                  case LABEL_TYPE_BROADCAST:
+                    break; // nothing to do in this case
+                  case LABEL_TYPE_6BYTE:
+                    /* 6_Byte_Label */
+                    ptr = eptr->ether_dhost;
+                    crc32_partial = crc32_calc(ptr, ether_addr_len, crc32_partial);
+                    for (unsigned int j = 0; j < ether_addr_len; j++) {
+                      bits = *ptr++;
+                      for (int n = 7; n >= 0; n--) {
+                        out[offset++] = bits & (1 << n) ? 1 : 0;
+                      }
+                    }
+                    ether_addr_len = ETHER_ADDR_LEN;    /* disable label re-use for now */
+                    break;
+                  }
                   /* GSE_data_byte */
                   switch (d_tuntap_mode) {
                   case TUNTAP_MODE_TAP_PCAP:

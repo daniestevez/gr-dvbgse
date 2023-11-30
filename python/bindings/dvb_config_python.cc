@@ -14,7 +14,7 @@
 /* BINDTOOL_GEN_AUTOMATIC(0)                                                       */
 /* BINDTOOL_USE_PYGCCXML(0)                                                        */
 /* BINDTOOL_HEADER_FILE(dvb_config.h)                                        */
-/* BINDTOOL_HEADER_FILE_HASH(8053888876ad4f084fff45ffdfcb998a)                     */
+/* BINDTOOL_HEADER_FILE_HASH(3a9dc5dcf1c7373049214e16ec486f3c)                     */
 /***********************************************************************************/
 
 #include <pybind11/complex.h>
@@ -144,4 +144,11 @@ void bind_dvb_config(py::module& m)
         .export_values();
 
     py::implicitly_convertible<int, ::gr::dvbgse::tuntap_mode_t>();
+    py::enum_<::gr::dvbgse::label_type_t>(m, "label_type_t")
+        .value("LABEL_TYPE_BROADCAST",
+               ::gr::dvbgse::label_type_t::LABEL_TYPE_BROADCAST)                 // 0
+        .value("LABEL_TYPE_6BYTE", ::gr::dvbgse::label_type_t::LABEL_TYPE_6BYTE) // 1
+        .export_values();
+
+    py::implicitly_convertible<int, ::gr::dvbgse::label_type_t>();
 }
